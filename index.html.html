@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>NIKKE 完全版オバロガチャシミュレーター</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background-color: #1a1a1d;
+            color: #ffffff;
+            max-width: 650px;
+            margin: 30px auto;
+            padding: 20px;
+            text-align: center;
+        }
+        h1 {
+            font-size: 20px;
+            border-bottom: 2px solid #ffcc00;
+            padding-bottom: 10px;
+            color: #ffcc00;
+            text-align: left;
+        }
+        .panel {
+            background-color: #2d2d30;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        .stats {
+            font-size: 16px;
+            margin-bottom: 15px;
+            color: #bbb;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+        }
+        button {
+            font-weight: bold;
+            cursor: pointer;
+            padding: 14px;
+            font-size: 16px;
+            border: none;
+            border-radius: 6px;
+            transition: background 0.2s;
+            flex: 1;
+        }
+        .btn-reroll {
+            background-color: #ffcc00;
+            color: #000;
+        }
+        .btn-reroll:hover {
+            background-color: #e6b800;
+        }
+        .btn-reset-num {
+            background-color: #3b82f6;
+            color: #fff;
+        }
+        .btn-reset-num:hover {
+            background-color: #2563eb;
+        }
+        .btn-reset-num:disabled {
+            background-color: #555;
+            color: #888;
+            cursor: not-allowed;
+        }
+        .slot-container {
+            margin-top: 20px;
+            text-align: left;
+        }
+        .slot {
+            background-color: #111;
+            border: 1px solid #444;
+            padding: 14px;
+            margin-bottom: 12px;
+            border-radius: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 15px;
+        }
+        .slot-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .lock-label {
+            font-size: 13px;
+            cursor: pointer;
+            background: #333;
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: 1px solid #555;
+        }
+        .lock-label input {
+            margin-right: 5px;
+            cursor: pointer;
+        }
+        
+        /* 段階別スタイル演出 */
+        .lvl-normal {
+            color: #ffffff;
+        }
+        /* 12〜14段階: 上位数値 (青文字表示) */
+        .lvl-high {
+            color: #3b82f6;
+            font-weight: bold;
+        }
+        /* 15段階: 最高値 (黒帯 ＋ 白抜き文字) */
+        .lvl-max {
+            background-color: #000000;
+            color: #ffffff;
+            font-weight: bold;
+            padding: 4px 10px;
+            border-radius: 4px;
+            border: 1px solid #3b82f6;
+            box-shadow: 0 0 8px rgba(59, 130, 246, 0.6);
+        }
+        .empty-slot {
+            color: #666;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>NIKKE 完全版オバロガチャシミュレーター</h1>
+
+    <div class="panel">
+        <div class="stats">
+            累計カスタムモジュール消費量: <strong id="totalModules" style="color: #ffcc00; font-size: 20px;">0</strong> 個<br>
+            <span id="currentCostInfo" style="font-size: 14px; color: #888;">（ロック数に応じた必要カスモ: 0個時=1個 / 1個時=2個 / 2個時=3個）</span>
+        </div>
+        <div class="button-group">
+            <button class="btn-reroll" onclick="rollGacha()">効果変更</button>
+            <button class="btn-reset-num" id="btnResetNum" onclick="resetNumbers()" disabled>数値再設定</button>
+        </div>
+    </div>
+
+    <div class="slot-container" id="slotsDisplay">
+        <!-- 初期表示 -->
+        <div class="slot">
+            <span class="empty-slot">1枠目: まだ回していません</span>
+            <label class="lock-label"><input type="checkbox" id="lock0" disabled> ロック</label>
+        </div>
+        <div class="slot">
+            <span class="empty-slot">2枠目: まだ回していません</span>
+            <label class="lock-label"><input type="checkbox" id="lock1" disabled> ロック</label>
+        </div>
+        <div class="slot">
+            <span class="empty-slot">3枠目: まだ回していません</span>
+            <label class="lock-label"><input type="checkbox" id="lock2" disabled> ロック</label>
+        </div>
+    </div>
+
+    <script>
+        const OPTION_WEIGHTS = {
+            "攻撃力増加": 10,
+            "有利コードダメージ増加": 10,
+            "最大装弾数増加": 12,
+            "クリティカルダメージ増加": 10,
+            "防御力増加": 10,
+            "命中率増加": 12,
+            "チャージダメージ増加": 12,
+            "チャージ速度増加": 12,
+            "クリティカル確率増加": 12
+        };
+
+        const LEVEL_WEIGHTS = [
+            { lvl: 1, w: 12 }, { lvl: 2, w: 12 }, { lvl: 3, w: 12 }, { lvl: 4, w: 12 }, { lvl: 5, w: 12 },
+            { lvl: 6, w: 7 },  { lvl: 7, w: 7 },  { lvl: 8, w: 7 },  { lvl: 9, w: 7 },  { lvl: 10, w: 7 },
+            { lvl: 11, w: 1 }, { lvl: 12, w: 1 }, { lvl: 13, w: 1 }, { lvl: 14, w: 1 }, { lvl: 15, w: 1 }
+        ];
+
+        let totalModulesUsed = 0;
+        let currentSlots = [null, null, null];
+
+        function getRandomWeighted(items, weightFn) {
+            let totalWeight = items.reduce((sum, item) => sum + weightFn(item), 0);
+            let random = Math.random() * totalWeight;
+            for (let item of items) {
+                if (random < weightFn(item)) return item;
+                random -= weightFn(item);
+            }
+            return items[items.length - 1];
+        }
+
+        // 現在のロック数から消費コストを計算（0個:1 / 1個:2 / 2個:3）
+        function getLockCost() {
+            let lockCount = 0;
+            for (let i = 0; i < 3; i++) {
+                if (currentSlots[i] !== null && document.getElementById(`lock${i}`) && document.getElementById(`lock${i}`).checked) {
+                    lockCount++;
+                }
+            }
+            return lockCount + 1;
+        }
+
+        function rollStat(existingNames) {
+            let available = Object.keys(OPTION_WEIGHTS).filter(name => !existingNames.includes(name));
+            if (available.length === 0) return null;
+            let chosenName = getRandomWeighted(available, name => OPTION_WEIGHTS[name]);
+            let chosenLvlObj = getRandomWeighted(LEVEL_WEIGHTS, item => item.w);
+            return { name: chosenName, level: chosenLvlObj.lvl };
+        }
+
+        // 【効果変更】
+        function rollGacha() {
+            let cost = getLockCost();
+            totalModulesUsed += cost;
+            document.getElementById("totalModules").innerText = totalModulesUsed;
+            document.getElementById("currentCostInfo").innerText = `（今回の効果変更消費: ${cost}個）`;
+
+            let existingNames = [];
+            for (let i = 0; i < 3; i++) {
+                if (currentSlots[i] !== null && document.getElementById(`lock${i}`) && document.getElementById(`lock${i}`).checked) {
+                    existingNames.push(currentSlots[i].name);
+                }
+            }
+
+            let newSlots = [null, null, null];
+
+            for (let i = 0; i < 3; i++) {
+                if (currentSlots[i] !== null && document.getElementById(`lock${i}`) && document.getElementById(`lock${i}`).checked) {
+                    newSlots[i] = currentSlots[i];
+                }
+            }
+
+            // 1枠目 (100%)
+            if (newSlots[0] === null) {
+                newSlots[0] = rollStat(existingNames);
+                if (newSlots[0]) existingNames.push(newSlots[0].name);
+            } else {
+                existingNames.push(newSlots[0].name);
+            }
+
+            // 2枠目 (50%)
+            if (newSlots[1] === null) {
+                if (Math.random() < 0.50) {
+                    newSlots[1] = rollStat(existingNames);
+                    if (newSlots[1]) existingNames.push(newSlots[1].name);
+                }
+            } else {
+                existingNames.push(newSlots[1].name);
+            }
+
+            // 3枠目 (30% - 2枠目がある場合のみ)
+            if (newSlots[2] === null && newSlots[1] !== null) {
+                if (Math.random() < 0.30) {
+                    newSlots[2] = rollStat(existingNames);
+                }
+            }
+
+            currentSlots = newSlots;
+            renderDisplay();
+        }
+
+        // 【数値再設定】（ロック数に応じてコストも変動するように修正）
+        function resetNumbers() {
+            let cost = getLockCost();
+            totalModulesUsed += cost;
+            document.getElementById("totalModules").innerText = totalModulesUsed;
+            document.getElementById("currentCostInfo").innerText = `（今回の数値再設定消費: ${cost}個）`;
+
+            for (let i = 0; i < 3; i++) {
+                // ロックされていない枠のみ、数値/レベルを再抽選
+                if (currentSlots[i] !== null && !(document.getElementById(`lock${i}`) && document.getElementById(`lock${i}`).checked)) {
+                    let chosenLvlObj = getRandomWeighted(LEVEL_WEIGHTS, item => item.w);
+                    currentSlots[i].level = chosenLvlObj.lvl;
+                }
+            }
+            renderDisplay();
+        }
+
+        function renderDisplay() {
+            let displayHtml = "";
+            let hasAnySlot = false;
+
+            for (let i = 0; i < 3; i++) {
+                let s = currentSlots[i];
+                let isLocked = s !== null && document.getElementById(`lock${i}`) && document.getElementById(`lock${i}`).checked;
+
+                if (s) {
+                    hasAnySlot = true;
+                    let lvlClass = "lvl-normal";
+                    if (s.level >= 12 && s.level <= 14) {
+                        lvlClass = "lvl-high";
+                    } else if (s.level === 15) {
+                        lvlClass = "lvl-max";
+                    }
+
+                    displayHtml += `
+                        <div class="slot">
+                            <div class="slot-info">
+                                <span>${i + 1}枠目: <strong>${s.name}</strong></span>
+                                <span class="${lvlClass}">Lv.${s.level}</span>
+                            </div>
+                            <label class="lock-label">
+                                <input type="checkbox" id="lock${i}" ${isLocked ? "checked" : ""}> ロック
+                            </label>
+                        </div>
+                    `;
+                } else {
+                    let conditionText = (i === 1) ? "(50%の抽選失敗)" : ((i === 2) ? "(30%の抽選失敗)" : "");
+                    displayHtml += `
+                        <div class="slot">
+                            <div class="slot-info">
+                                <span>${i + 1}枠目: <span class="empty-slot">効果なし ${conditionText}</span></span>
+                            </div>
+                            <label class="lock-label">
+                                <input type="checkbox" id="lock${i}" disabled> ロック
+                            </label>
+                        </div>
+                    `;
+                }
+            }
+
+            document.getElementById("slotsDisplay").innerHTML = displayHtml;
+            document.getElementById("btnResetNum").disabled = !hasAnySlot;
+        }
+    </script>
+</body>
+</html>
